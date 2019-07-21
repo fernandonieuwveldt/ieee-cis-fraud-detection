@@ -1,9 +1,12 @@
 import pandas
+import pandas_profiling
 from sklearn.base import BaseEstimator, TransformerMixin
 from os import path
+from copy import deepcopy
 
 
-data_folder = path.join(path.dirname(path.realpath(__file__)), '../data/input_data/ieee-fraud-detection/')
+input_data_folder = path.join(path.dirname(path.realpath(__file__)), '../data/input_data/ieee-fraud-detection/')
+output_data_folder = path.join(path.dirname(path.realpath(__file__)), '../data/output_data/')
 
 transaction_features = ['TransactionID', 'ProductCD',
                         'card1', 'card2', 'card3', 'card4', 'card5', 'card6',
@@ -20,12 +23,15 @@ class FeatureExtractor(BaseEstimator, TransformerMixin):
 
     """
     def __init__(self, features=[]):
-        self.features = features
+        self.features = deepcopy(features)
 
     def fit(self, X, y=None):
         return self
 
     def transform(self, X, y=None):
+        # remove features with too many missing values here
+        if 'isFraud' not in X.columns and self.features == transaction_features:
+            self.features.remove('isFraud')
         return X[self.features]
 
 
@@ -34,10 +40,12 @@ class TransactionData(object):
     Data Class for Transaction Fraud Data
 
     """
+
     def __init__(self, file_name=None):
-        # transaction data file is big so read in by chunk
+        # transaction data file is BIG so read in by chunk
         self.data = pandas.concat([FeatureExtractor(transaction_features).transform(chunk)
-                                   for chunk in pandas.read_csv(data_folder + file_name, chunksize=10000)])
+                                   for chunk in pandas.read_csv(input_data_folder + file_name, chunksize=10000)])
+        self.data.set_index('TransactionID')
 
 
 class IdentityData(object):
@@ -46,8 +54,9 @@ class IdentityData(object):
 
     """
     def __init__(self, file_name=None):
-        self.data = pandas.read_csv(data_folder + file_name)
+        self.data = pandas.read_csv(input_data_folder + file_name)
         self.data = FeatureExtractor(identity_features).transform(self.data)
+        self.data.set_index('TransactionID')
 
 
 class FraudData(object):
@@ -56,11 +65,27 @@ class FraudData(object):
 
     """
     def __init__(self, transaction_file=None, identity_file=None):
-        self.trans_data = TransactionData(transaction_file).data
-        self.identity_data = IdentityData(identity_file).data
+        # self.transaction_data = TransactionData(transaction_file).data
+        # self.identity_data = IdentityData(identity_file).data
+        # self.data = self.transaction_data.join(self.identity_data, lsuffix='_Transaction', rsuffix='_Identity')
+        transaction_data = TransactionData(transaction_file).data
+        identity_data = IdentityData(identity_file).data
+        self.data = pandas.merge(transaction_data,  identity_data, how='left', on='TransactionID')
+        del transaction_data
+        del identity_data
+
+    def profile_report(self):
+        # self._gen_profile(self.transaction_data, output_file='transaction_profile.html')
+        # self._gen_profile(self.identity_data, output_file='identity_profile.html')
+        self._gen_profile(self.data, output_file='full_profile.html')
+
+    @staticmethod
+    def _gen_profile(data_frame=None, output_file=None):
+        pandas_profiling.ProfileReport(data_frame).to_file(output_data_folder+output_file)
 
 
 if __name__ == '__main__':
-    trans_data = TransactionData('train_transaction.csv')
-    print(trans_data.shape)
-    # identity_data = IdentityData('train_identity.csv')
+    fraud = FraudData(transaction_file='train_transaction.csv',
+                      identity_file='train_identity.csv')
+    # fraud.profile_report()
+

@@ -35,8 +35,9 @@ class TransactionData(object):
 
     """
     def __init__(self, file_name=None):
-        self.data = pandas.read_csv(data_folder + file_name)
-        self.data = FeatureExtractor(transaction_features).transform(self.data)
+        # transaction data file is big so read in by chunk
+        self.data = pandas.concat([FeatureExtractor(transaction_features).transform(chunk)
+                                   for chunk in pandas.read_csv(data_folder + file_name, chunksize=10000)])
 
 
 class IdentityData(object):
@@ -60,5 +61,6 @@ class FraudData(object):
 
 
 if __name__ == '__main__':
-    # trans_data = TransactionData('train_transaction.csv')
-    identity_data = IdentityData('train_identity.csv')
+    trans_data = TransactionData('train_transaction.csv')
+    print(trans_data.shape)
+    # identity_data = IdentityData('train_identity.csv')

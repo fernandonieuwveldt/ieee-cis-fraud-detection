@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 import os
 
 
-transaction_features = ['TransactionID', 'ProductCD',
+transaction_features = ['TransactionID', 'ProductCD', 'TransactionAmt', 'dist1', 'dist2',
                         'card1', 'card2', 'card3', 'card4', 'card5', 'card6',
                         'addr1', 'addr2', 'P_emaildomain', 'R_emaildomain',
                         'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9',
@@ -102,6 +102,7 @@ class DataSplitter(object):
     def __init__(self, transaction_file='', identity_file=''):
         fraud = FraudData(transaction_file=transaction_file,
                           identity_file=identity_file)
+        # fraud.data.fillna('Unknown', inplace=True)
         features = fraud.data.drop('isFraud', axis=1)
         target = fraud.data['isFraud'].values
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(features, target,

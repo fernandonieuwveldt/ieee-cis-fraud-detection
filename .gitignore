@@ -1,5 +1,9 @@
+floyd
 .idea/misc.xml
 .idea/workspace.xml
 .idea/fraud-detection.iml
 fraud-detection.iml
-/data/
+data/
+.idea/
+__pycache__/
+

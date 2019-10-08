@@ -157,6 +157,7 @@ class MultiColumnLabelEncoder(TransformerMixin):
         """
         self.encoders = {}
         for feature, c in X.iteritems():
+            print(feature)
             encoder = LabelEncoder()
             encoder.fit(c)
             self.encoders[feature] = dict(zip(encoder.classes_, encoder.transform(encoder.classes_)))

@@ -19,6 +19,9 @@ class FraudFeatureExtractor(TransformerMixin):
         self.with_embedding = with_embedding
         self.mapper = None
         self.dropper = None
+        self.sparse = True
+        if self.with_embedding:
+            self.sparse = False
 
     def fraud_detector_extractor_mapper(self):
         """
@@ -29,7 +32,7 @@ class FraudFeatureExtractor(TransformerMixin):
         pipeline_steps = []
 
         categorical_pipeline = Pipeline(steps=[('categorical_features', CategoricalTransformer()),
-                                               ('onehot', OneHotEncoder(sparse=True, handle_unknown='ignore'))
+                                               ('onehot', OneHotEncoder(sparse=self.sparse, handle_unknown='ignore'))
                                                ])
         pipeline_steps.append(('categorical_pipeline', categorical_pipeline))
 

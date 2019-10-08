@@ -6,7 +6,6 @@ import pandas_profiling
 from sklearn.base import TransformerMixin
 from copy import deepcopy
 from sklearn.model_selection import train_test_split
-# from constants import *
 from pre_process import PreProcessIdentity, PreProcessTransactions
 
 
@@ -107,8 +106,5 @@ class DataSplitter(object):
 
 
 if __name__ == '__main__':
-    # fraud = FraudData(transaction_file='train_transaction.csv',
-    #                   identity_file='train_identity.csv')
-    # fraud.profile_report()
-    # fraud_data = DataSplitter(transaction_file='train_transaction.csv', identity_file='train_identity.csv')
-    identity = IdentityData(file_name='train_identity_1000.csv').data
+    fraud = FraudData(transaction_file='train_transaction_5000.csv',
+                      identity_file='train_identity_5000.csv')

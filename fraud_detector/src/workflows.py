@@ -1,6 +1,6 @@
+from fraud import FraudData, DataSplitter
 from classifier import BaggedRFModel, CatBoostModel, XGBModel, KFoldModel, ClusteredXGBModel
 from keras_model import EmbeddingBasedClassifier
-from fraud import FraudData, DataSplitter
 from sklearn.metrics import roc_auc_score, roc_curve
 import matplotlib.pyplot as plt
 
@@ -17,7 +17,8 @@ def train_tree(train_data=None, estimator=CatBoostModel()):
     estimator.fit(xtrain=train_data.X_train, ytrain=train_data.y_train)
 
     y_predictions = estimator.predict(train_data.X_test)[:, 1]
-    print('AUC on Train set: ', roc_auc_score(train_data.y_train, estimator.predict(train_data.X_train)[:, 1]))
+    print('AUC on Train set: ', roc_auc_score(train_data.y_train,
+                                              estimator.predict(train_data.X_train)[:, 1]))
     print('AUC on Test set: ', roc_auc_score(train_data.y_test, y_predictions))
     return estimator
 
@@ -29,6 +30,13 @@ def train_embedding_model(train_data=None):
     :param train_data: FraudData object
     :return: fitted model
     """
+    classifier = EmbeddingBasedClassifier()
+    classifier.fit(train_data.X_train, train_data.y_train, train_data.X_test, train_data.y_test)
+    y_predictions = classifier.predict(train_data.X_test)
+
+    print('AUC on Train set: ', roc_auc_score(train_data.y_train, classifier.predict(train_data.X_train)))
+    print('AUC on Test set: ', roc_auc_score(train_data.y_test, y_predictions))
+    return classifier
 
 
 def model_check(scores, y_true):
@@ -52,4 +60,7 @@ def model_check(scores, y_true):
 if __name__ == '__main__':
     data = DataSplitter(transaction_file='train_transaction_5000.csv', identity_file='train_identity_5000.csv')
     estimator = BaggedRFModel()
-    trained_estimator = train_tree(data=data, estimator=estimator)
+    trained_estimator = train_tree(train_data=data, estimator=estimator)
+    trained_estimator.submit(data.X_test)
+    trained_net = train_embedding_model(train_data=data)
+    trained_net.submit(data.X_test, data.X_test['TransactionID'])

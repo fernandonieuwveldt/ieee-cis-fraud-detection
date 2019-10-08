@@ -1,4 +1,3 @@
-from constants import INPUT_DIR
 import pandas
 import tensorflow
 from keras.models import Model, load_model
@@ -6,11 +5,11 @@ from keras.layers import Input, Dense, Concatenate, Reshape, Dropout
 from keras.layers.embeddings import Embedding
 from keras.callbacks import EarlyStopping
 from keras.callbacks import ModelCheckpoint
-from sklearn.metrics import roc_auc_score
 from keras import optimizers
 import keras
 from transformers import TypeSelector
 from feature_extractor import FraudFeatureExtractor
+from utils import cast_to_type
 
 tensorflow.logging.set_verbosity(tensorflow.logging.ERROR)
 config = tensorflow.ConfigProto(device_count={"CPU": 8})
@@ -23,10 +22,10 @@ class EmbeddingBasedClassifier:
 
     """
 
-    EPOCHS = 200
+    EPOCHS = 10
     OPTIMIZER = optimizers.SGD(lr=0.03, nesterov=True)
     EMBEDDING_RATIO = 0.25
-    MAX_EMBEDDING_OUTPUTDIM = 50
+    MAX_EMBEDDING = 50
     BATCH_SIZE = 256
     VERBOSE = 0
 
@@ -35,7 +34,7 @@ class EmbeddingBasedClassifier:
                  'verbose': 1,
                  'patience': 20}
 
-    MC_PARAMS = {'filepath': 'best_model.h5',
+    MC_PARAMS = {'filepath': '../data/saved_models/best_model.h5',
                  'monitor': 'val_loss',
                  'mode': 'min',
                  'verbose': 1,
@@ -44,6 +43,7 @@ class EmbeddingBasedClassifier:
     def __init__(self):
         self.early_stopping = EarlyStopping(**self.ES_PARAMS)
         self.model_checkpoint = ModelCheckpoint(**self.MC_PARAMS)
+        self.transformer = FraudFeatureExtractor(with_embedding=True)
         self.inputs = []
         self.layers = []
         self.classifier = None
@@ -69,7 +69,7 @@ class EmbeddingBasedClassifier:
         categoric_features = set(categoric_features) - set(embedding_features)
 
         feature_mode = {feature: cat_data_frame[feature].nunique()+1 for feature in embedding_features}
-        embedding_output_mapper = {feature: min(int(feature_mode[feature] * self.EMBEDDING_RATIO)+2, self.MAX_EMBEDDING_OUTPUTDIM)
+        embedding_output_mapper = {feature: min(int(feature_mode[feature] * self.EMBEDDING_RATIO)+2, self.MAX_EMBEDDING)
                                    for feature in embedding_features}
 
         feature_category_mapper = {'numeric_features': numeric_features,
@@ -179,9 +179,23 @@ class EmbeddingBasedClassifier:
         :param y_val: validation targets
         :return:
         """
+        self.transformer.fit(x_train, y_train)
+        x_train = self.transformer.transform(x_train)
+        x_val = self.transformer.transform(x_val)
+
+        # have to convert numpy to pandas
+        onehot_pipe = self.transformer.mapper.transformer_list[0][1][1]
+        embedding_pipe = self.transformer.mapper.transformer_list[1][1][1]
+        self.nr_cat_features = sum([len(elem) for elem in onehot_pipe.categories_]) + \
+                               len(embedding_pipe.embedding_candidates)
+
+        x_train, x_val = cast_to_type(x_train, x_val, self.nr_cat_features)
+
         self.feature_category_mapper, self.feature_mode, self.embedding_output_mapper = self.embedding_mapper(x_train)
 
-        self.classifier = self.build_network(self.feature_category_mapper, self.feature_mode, self.embedding_output_mapper)
+        self.classifier = self.build_network(self.feature_category_mapper,
+                                             self.feature_mode,
+                                             self.embedding_output_mapper)
 
         x_train_preproc = self.preproc_embedding_layer(x_train, self.feature_category_mapper)
         x_val_preproc = self.preproc_embedding_layer(x_val, self.feature_category_mapper)
@@ -203,9 +217,12 @@ class EmbeddingBasedClassifier:
         :param x_test:
         :return:
         """
-        x_train_preproc = self.preproc_embedding_layer(x_test, self.feature_category_mapper)
-        saved_model = load_model('best_model.h5')
-        return saved_model.predict(x_train_preproc)
+        x_test = self.transformer.transform(x_test)
+        x_test, _ = cast_to_type(x_test, x_test, self.nr_cat_features)
+
+        x_test_preproc = self.preproc_embedding_layer(x_test, self.feature_category_mapper)
+        saved_model = load_model(self.MC_PARAMS['filepath'])
+        return saved_model.predict(x_test_preproc)
 
     def submit(self, xtest=None, trans_ids=None):
         """
@@ -219,58 +236,4 @@ class EmbeddingBasedClassifier:
         my_submission_file = pandas.DataFrame()
         my_submission_file['TransactionID'] = trans_ids
         my_submission_file['isFraud'] = test_predictions
-        my_submission_file.to_csv('submission.csv', index=False)
-
-
-if __name__ == '__main__':
-    from fraud import FraudData, DataSplitter
-    import os
-    if os.environ.get('USER', 'notflash') == 'flash':
-        # fraud = TransactionData(file_name='train_transaction_5000.csv')
-        fraud_data = DataSplitter(transaction_file='train_transaction_10000.csv', identity_file='train_identity_10000.csv')
-    else:
-        # fraud = TransactionData(file_name='train_transaction.csv')
-        fraud_data = DataSplitter(transaction_file='train_transaction.csv', identity_file='train_identity.csv')
-
-    transformer = FraudFeatureExtractor(with_embedding=True)
-    transformer.fit(fraud_data.X_train, fraud_data.y_train)
-    X_train = transformer.transform(fraud_data.X_train)
-    X_test = transformer.transform(fraud_data.X_test)
-
-    # have to convert numpy to pandas
-    onehot = transformer.mapper.transformer_list[0][1][1]
-    embedding = transformer.mapper.transformer_list[1][1][1]
-    nr_cat_features = sum([len(elem) for elem in onehot.categories_]) + len(embedding.embedding_candidates)
-    print('nr_cat_features: ', nr_cat_features)
-
-    X_train_df = pandas.DataFrame(X_train, columns=list(range(X_train.shape[1])))
-    X_test_df = pandas.DataFrame(X_test, columns=list(range(X_test.shape[1])))
-    for k in range(nr_cat_features):
-        X_train_df[k] = X_train_df[k].astype('object')
-        X_test_df[k] = X_test_df[k].astype('object')
-
-    for k in range(nr_cat_features, X_train.shape[1]):
-        X_train_df[k] = X_train_df[k].astype('float64')
-        X_test_df[k] = X_test_df[k].astype('float64')
-
-    classifier = EmbeddingBasedClassifier()
-    classifier.fit(X_train_df, fraud_data.y_train, X_test_df, fraud_data.y_test)
-
-    y_predictions = classifier.predict(X_test_df)
-
-    print('AUC on Train set: ', roc_auc_score(fraud_data.y_train, classifier.predict(X_train_df)))
-    print('AUC on Test set: ', roc_auc_score(fraud_data.y_test, y_predictions))
-
-    if os.environ.get('USER', 'notflash') != 'flash':
-        fraud_data = FraudData(transaction_file='test_transaction.csv', identity_file='test_identity.csv')
-        # fraud = TransactionData(file_name='test_transaction.csv')
-        X_val = transformer.transform(fraud_data.data)
-        X_val_df = pandas.DataFrame(X_val, columns=list(range(X_val.shape[1])))
-        for k in range(nr_cat_features):
-            X_val_df[k] = X_val_df[k].astype('object')
-            X_val_df[k] = X_val_df[k].astype('object')
-
-        for k in range(nr_cat_features, X_train.shape[1]):
-            X_val_df[k] = X_val_df[k].astype('float64')
-            X_val_df[k] = X_val_df[k].astype('float64')
-        classifier.submit(X_val_df, trans_ids=fraud_data.data['TransactionID'])
+        my_submission_file.to_csv('../data/output_data/submission.csv', index=False)

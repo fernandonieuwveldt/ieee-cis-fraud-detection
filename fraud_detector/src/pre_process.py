@@ -34,7 +34,7 @@ class PreProcessIdentity(TransformerMixin):
 
         for key, val in self.PLATFORM_MAPPER.items():
             data_frame.loc[id_30.str.contains(key).fillna(False), self.PLATFORM_ID] = val
-        data_frame[self.PLATFORM_ID] = data_frame[self.PLATFORM_ID].astype('object')
+        data_frame[self.PLATFORM_ID] = data_frame[self.PLATFORM_ID].astype('str')
         return data_frame
 
     def set_types(self):
@@ -76,8 +76,6 @@ class PreProcessIdentity(TransformerMixin):
         identity_transformed['id_33'] = identity_transformed['id_33'].fillna('-999x-1').map(lambda x: x.split('x')[0]).astype(int) /\
                                         identity_transformed['id_33'].fillna('-999x-1').map(lambda x: x.split('x')[1].strip()).astype(int)
         identity_transformed['id_33'] = identity_transformed['id_33'].replace(999.0, numpy.nan)
-        # identity_transformed.drop(['id_30', 'id_31', 'id_33'], axis=1, inplace=True)
-        # identity_transformed.drop(['id_31'], axis=1, inplace=True)
         return identity_transformed
 
 

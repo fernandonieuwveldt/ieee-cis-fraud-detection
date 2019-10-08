@@ -1,11 +1,7 @@
-from fraud import FraudData, TransactionData, DataSplitter
-from sklearn.metrics import roc_auc_score
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import RandomForestClassifier, BaggingClassifier
-from imblearn.under_sampling import RandomUnderSampler
 import pandas
 from xgboost import XGBClassifier
-import os
 from catboost import CatBoostClassifier, Pool
 import numpy
 from sklearn.model_selection import KFold
@@ -25,13 +21,12 @@ class KaggleSubmitMixin:
         :param xtest: competition test data
         :param trans_ids: transaction ids
         :return: saved kaggle file format
-
         """
         test_predictions = self.predict(xtest)[:, 1]
         my_submission_file = pandas.DataFrame()
         my_submission_file['TransactionID'] = trans_ids
         my_submission_file['isFraud'] = test_predictions
-        my_submission_file.to_csv('submission.csv', index=False)
+        my_submission_file.to_csv('../data/output_data/submission.csv', index=False)
 
 
 class BaggedRFModel(BaseEstimator, KaggleSubmitMixin):
@@ -42,8 +37,8 @@ class BaggedRFModel(BaseEstimator, KaggleSubmitMixin):
                  'max_depth': 9,
                  'n_jobs': -1}
 
-    def __init__(self, n_estimators=10):
-        self.n_estimators = n_estimators
+    def __init__(self, n_estimators_bagging=10):
+        self.n_estimators_bagging = n_estimators_bagging
         self.fraud_transformer = FraudFeatureExtractor()
         self.classifier = None
 
@@ -59,7 +54,7 @@ class BaggedRFModel(BaseEstimator, KaggleSubmitMixin):
         xtrain = self.fraud_transformer.transform(xtrain)
         estimator = RandomForestClassifier(**self.rf_params)
 
-        self.classifier = BaggingClassifier(base_estimator=estimator, n_estimators=self.n_estimators)
+        self.classifier = BaggingClassifier(base_estimator=estimator, n_estimators=self.n_estimators_bagging)
         self.classifier.fit(xtrain, ytrain)
         return self
 
@@ -157,7 +152,8 @@ class XGBModel(BaseEstimator, KaggleSubmitMixin):
             xval = xtrain.copy()
             yval = ytrain.copy()
 
-        xtrain = self.fraud_transformer.fit_transform(xtrain, ytrain)
+        self.fraud_transformer.fit(xtrain, ytrain)
+        xtrain = self.fraud_transformer.transform(xtrain)
         xval = self.fraud_transformer.transform(xval)
         eval_set = [(xval, yval)]
         self.classifier = XGBClassifier(n_estimators=2000,
@@ -210,7 +206,7 @@ class KFoldModel(BaseEstimator, KaggleSubmitMixin):
         :return: KFoldModel object
         """
         self.fraud_transformer.fit(xtrain, ytrain)
-        xtrain = self.fraud_transformer.transform(xtrain, ytrain)
+        xtrain = self.fraud_transformer.transform(xtrain)
 
         folds = KFold(n_splits=self._SPLITS, shuffle=True)
         for fold_n, (train_index, valid_index) in enumerate(folds.split(xtrain)):
@@ -310,43 +306,6 @@ class ClusteredXGBModel(BaseEstimator, KaggleSubmitMixin):
         for name, group in xtest.groupby(self.split_feature):
             for s in range(self._SPLITS):
                 group_transformed = self.split_transformers[name][s].transform(group)
-                predictions[group.index.values, :] += self.split_estimators[name][s].predict_proba(group_transformed) / self._SPLITS
+                predictions[group.index.values, :] += self.split_estimators[name][s].predict_proba(group_transformed) / \
+                                                      self._SPLITS
         return predictions
-
-
-if __name__ == '__main__':
-
-    if os.environ.get('USER', 'notflash') == 'flash':
-        data = DataSplitter(transaction_file='train_transaction_5000.csv', identity_file='train_identity_5000.csv')
-    else:
-        data = DataSplitter(transaction_file='train_transaction.csv', identity_file='train_identity.csv')
-
-    # fraud_transformer = FraudFeatureExtractor()
-    # m = transformer.mapper.transformer_list[0][1][1]
-    # fraud_transformer.fit(data.X_train)
-    X_train = data.X_train
-    X_test = data.X_test
-
-    print('X_train shape: ', X_train.shape)
-    # apply classifier
-    model = FraudDetector()
-
-    model.fit(X_train, data.y_train)
-    # X_test = data.X_test # fraud_transformer.transform(data.X_test)
-
-    y_predictions = model.predict(X_test)[:, 1]
-    print('AUC on Train set: ', roc_auc_score(data.y_train, model.predict(X_train)[:, 1]))
-    print('AUC on Test set: ', roc_auc_score(data.y_test, y_predictions))
-
-    # Apply model on test results
-    if os.environ.get('USER', 'notflash') != 'flash':
-        fraud = FraudData(transaction_file='test_transaction.csv',
-                          identity_file='test_identity.csv')
-        # fraud = FraudData(transaction_file='train_transaction_5000.csv',
-        #                   identity_file='train_identity_5000.csv')
-        # fraud = TransactionData(file_name='test_transaction.csv')
-        model.submit(fraud.data, trans_ids=fraud.data['TransactionID'])
-
-# encoder_steps = fraud_transformer.mapper.transformer_list[0][1][1]
-# nr_cat_features = len(encoder_steps.keys())
-

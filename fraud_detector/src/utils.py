@@ -1,5 +1,21 @@
 import numpy
+import pandas
 np = numpy
+
+
+def cast_to_type(X_train=None, X_test=None, nr_cat_features=None):
+    X_train_df = pandas.DataFrame(X_train, columns=list(range(X_train.shape[1])))
+    X_test_df = pandas.DataFrame(X_test, columns=list(range(X_test.shape[1])))
+
+    for k in range(nr_cat_features):
+        X_train_df[k] = X_train_df[k].astype('object')
+        X_test_df[k] = X_test_df[k].astype('object')
+
+    for k in range(nr_cat_features, X_train.shape[1]):
+        X_train_df[k] = X_train_df[k].astype('float64')
+        X_test_df[k] = X_test_df[k].astype('float64')
+
+    return X_train_df, X_test_df
 
 
 def reduce_mem_usage(df):

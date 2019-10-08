@@ -3,7 +3,6 @@ floyd
 .idea/workspace.xml
 .idea/fraud-detection.iml
 fraud-detection.iml
-data/
 .idea/
 __pycache__/
 

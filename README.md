@@ -13,7 +13,7 @@ To run execute below under cd fraud_detector/src directory
 ```
 
 ### Two classes of models exist
-* Two classes of models exist, one set for tree based models which can be found in classifier.py: 
+* Two classes of models exist, one set for tree based models and one keras model: 
     * Tree based models: BaggedRFModel, CatBoostModel, XGBModel, KFoldModel, ClusteredXGBModel
     * The other is Embedding based model using keras. The keras model can be found in keras_model.py
     

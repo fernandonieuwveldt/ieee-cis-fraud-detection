@@ -5,7 +5,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import LabelEncoder
 from pre_process import reduce_mem_usage
 import numpy
-from sklearn.decomposition import TruncatedSVD
+from sklearn.decomposition import PCA
 
 
 class DropMissingFeatures(TransformerMixin):
@@ -141,23 +141,20 @@ class MultiColumnLabelEncoder(TransformerMixin):
 
     Sets a default label if unseen labels are supplied during inference
     """
-
-    def __init__(self, nunique=3):
+    def __init__(self):
         self.encoders = None
-        self.nunique = nunique
         self.embedding_candidates = []
 
     def fit(self, X, y=None):
         """
         Fit LabelEncoder's on multiple features
 
-        :param X:
-        :param y:
-        :return:
+        :param X: pandas data_frame
+        :param y: None
+        :return: MultiColumnLabelEncoder object
         """
         self.encoders = {}
         for feature, c in X.iteritems():
-            print(feature)
             encoder = LabelEncoder()
             encoder.fit(c)
             self.encoders[feature] = dict(zip(encoder.classes_, encoder.transform(encoder.classes_)))
@@ -169,8 +166,8 @@ class MultiColumnLabelEncoder(TransformerMixin):
         """
         Apply LabelEncoder and supply default values for unseen labels during inference
 
-        :param X:
-        :return:
+        :param X: pandas data frame
+        :return: label encoded pandas data frame
         """
         for feature in self.embedding_candidates:
             X.loc[:, feature] = X.loc[:, feature].apply(lambda x: self.encoders[feature].get(x, 999))
@@ -211,6 +208,7 @@ class NumericalTransformer(TransformerMixin):
             xn_copy[card+'_proportion'] = xn_copy[card+'_fraudcases'] / xn_copy[card]
 
         object_types = list(xn_copy.dtypes[xn_copy.dtypes == 'object'].index)
+        # drop features that will be handled by a different pipeline
         xn_copy.drop(object_types, axis=1, inplace=True)
         xn_copy.drop(vesta, axis=1, inplace=True)
         xn_copy.drop(time_delta_variables, axis=1, inplace=True)
@@ -242,7 +240,7 @@ class AutoPCA(TransformerMixin):
     def __init__(self, variance_threshold=0.98):
         self.opt_ncomponents = None
         self.variance_threshold = variance_threshold
-        self.pca = TruncatedSVD()
+        self.pca = PCA()
 
     def fit(self, X, y=None):
         """
@@ -253,7 +251,7 @@ class AutoPCA(TransformerMixin):
         :return: self return object
         """
         self.pca.fit(X)
-        self.opt_ncomponents = numpy.argmax(self.pca.explained_variance_ratio_.sum() > self.variance_threshold)
+        self.opt_ncomponents = numpy.argmax(self.pca.explained_variance_ratio_.cumsum() > self.variance_threshold)
         return self
 
     def transform(self, X, y=None):
